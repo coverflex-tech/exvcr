@@ -111,7 +111,8 @@ defmodule ExVCR.Adapter.Hackney do
   end
 
   defp handle_body_request(nil, args) do
-    :meck.passthrough(args)
+    #:meck.passthrough(args)
+    passthrough(:mimic, args)
   end
 
   defp handle_body_request(recorder, [client]) do
@@ -124,7 +125,8 @@ defmodule ExVCR.Adapter.Hackney do
       Store.delete(client_key_atom)
       {:ok, body}
     else
-      case :meck.passthrough([client, max_length]) do
+      case passthrough(:mimic, [client, max_length]) do
+      #case :meck.passthrough([client, max_length]) do
         {:ok, body} ->
           body = ExVCR.Filter.filter_sensitive_data(body)
 
@@ -142,6 +144,14 @@ defmodule ExVCR.Adapter.Hackney do
           {ret, body}
       end
     end
+  end
+
+  defp passthrough(:meck, args) when is_list(args) do
+    :meck.passthrough(args)
+  end
+
+  defp passthrough(:mimic, args) when is_list(args) do
+    Kernel.apply(Mimic.Module.original(module_name()), :body, args)
   end
 
   @doc """

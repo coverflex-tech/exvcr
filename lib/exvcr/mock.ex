@@ -7,6 +7,7 @@ defmodule ExVCR.Mock do
 
   defmacro __using__(opts) do
     adapter = opts[:adapter] || ExVCR.Adapter.IBrowse
+    mock_lib = opts[:mock_lib] || :meck
     options = opts[:options]
 
     quote do
@@ -16,6 +17,10 @@ defmodule ExVCR.Mock do
 
       def adapter_method() do
         unquote(adapter)
+      end
+
+      def mock_lib_method() do
+        unquote(mock_lib)
       end
 
       def options_method() do
@@ -31,16 +36,18 @@ defmodule ExVCR.Mock do
     quote do
       stub_fixture = "stub_fixture_#{ExVCR.Util.uniq_id}"
       stub = prepare_stub_record(unquote(options), adapter_method())
-      recorder = Recorder.start([fixture: stub_fixture, stub: stub, adapter: adapter_method()])
+      recorder = Recorder.start([fixture: stub_fixture, stub: stub, adapter: adapter_method(), mock_lib: mock_lib_method()])
 
       try do
-        mock_methods(recorder, adapter_method())
+        mock_methods(recorder, adapter_method(), mock_lib_method())
         [do: return_value] = unquote(test)
         return_value
       after
         module_name = adapter_method().module_name
-        unload(module_name)
-        ExVCR.MockLock.release_lock()
+        unload(module_name, mock_lib_method())
+        if mock_lib_method() == :meck do
+          ExVCR.MockLock.release_lock()
+        end
       end
     end
   end
@@ -58,20 +65,21 @@ defmodule ExVCR.Mock do
   defmacro use_cassette(fixture, options, test) do
     quote do
       recorder = Recorder.start(
-        unquote(options) ++ [fixture: normalize_fixture(unquote(fixture)), adapter: adapter_method()])
+        unquote(options) ++ [fixture: normalize_fixture(unquote(fixture)), adapter: adapter_method(), mock_lib: mock_lib_method()])
 
 
       try do
-        mock_methods(recorder, adapter_method())
+        mock_methods(recorder, adapter_method(), mock_lib_method())
         [do: return_value] = unquote(test)
         return_value
       after
         recorder_result = Recorder.save(recorder)
 
         module_name = adapter_method().module_name
-        unload(module_name)
-        ExVCR.MockLock.release_lock()
-
+        unload(module_name, mock_lib_method())
+        if mock_lib_method() == :meck do
+          ExVCR.MockLock.release_lock()
+        end
         recorder_result
       end
     end
@@ -87,42 +95,58 @@ defmodule ExVCR.Mock do
   end
 
   @doc false
-  defp load(adapter, recorder) do
+  defp load(mock_lib, adapter, recorder) do
     if ExVCR.Application.global_mock_enabled?() do
       ExVCR.Actor.CurrentRecorder.set(recorder)
     else
       module_name    = adapter.module_name
+      initialize_mock(mock_lib, module_name)
+
       target_methods = adapter.target_methods(recorder)
       Enum.each(target_methods, fn({function, callback}) ->
-        :meck.expect(module_name, function, callback)
+        mock_method(mock_lib, module_name, function, callback)
       end)
     end
   end
 
+  defp initialize_mock(:meck, module_name), do: :ok
+  defp initialize_mock(:mimic, module_name), do: :ok #Mimic.copy(module_name)
+
+  defp mock_method(:meck, module_name, function, callback), do: :meck.expect(module_name, function, callback)
+  defp mock_method(:mimic, module_name, function, callback), do: Mimic.stub(module_name, function, callback)
+
+  defp unload_mock(:meck, module_name), do: :meck.unload(module_name)
+  defp unload_mock(:mimic, module_name), do: :ok # Mimic.Server.reset(module_name)
+
   @doc false
-  def unload(module_name) do
+  def unload(module_name, mock_lib \\ :meck) do
     if ExVCR.Application.global_mock_enabled?() do
       ExVCR.Actor.CurrentRecorder.default_state()
       |> ExVCR.Actor.CurrentRecorder.set()
     else
-      :meck.unload(module_name)
+      unload_mock(mock_lib, module_name)
     end
   end
 
   @doc """
   Mock methods pre-defined for the specified adapter.
   """
-  def mock_methods(recorder, adapter) do
-    parent_pid = self()
+  def mock_methods(recorder, adapter, mock_lib \\ :meck)
+  def mock_methods(recorder, adapter, :meck) do
+      parent_pid = self()
     Task.async(fn ->
       ExVCR.MockLock.ensure_started
       ExVCR.MockLock.request_lock(self(), parent_pid)
       receive do
         :lock_granted ->
-          load(adapter, recorder)
+          load(:meck, adapter, recorder)
       end
     end)
     |> Task.await(:infinity)
+  end
+
+  def mock_methods(recorder, adapter, :mimic) do
+    load(:mimic, adapter, recorder)
   end
 
   @doc """
