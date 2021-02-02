@@ -110,13 +110,13 @@ defmodule ExVCR.Mock do
   end
 
   defp initialize_mock(:meck, module_name), do: :ok
-  defp initialize_mock(:mimic, module_name), do: :ok #Mimic.copy(module_name)
+  defp initialize_mock(:mimic, module_name), do: :ok
 
   defp mock_method(:meck, module_name, function, callback), do: :meck.expect(module_name, function, callback)
   defp mock_method(:mimic, module_name, function, callback), do: Mimic.stub(module_name, function, callback)
 
   defp unload_mock(:meck, module_name), do: :meck.unload(module_name)
-  defp unload_mock(:mimic, module_name), do: :ok # Mimic.Server.reset(module_name)
+  defp unload_mock(:mimic, module_name), do: :ok
 
   @doc false
   def unload(module_name, mock_lib \\ :meck) do

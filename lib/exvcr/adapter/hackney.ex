@@ -111,7 +111,6 @@ defmodule ExVCR.Adapter.Hackney do
   end
 
   defp handle_body_request(nil, args) do
-    #:meck.passthrough(args)
     passthrough(:mimic, args)
   end
 
@@ -126,7 +125,6 @@ defmodule ExVCR.Adapter.Hackney do
       {:ok, body}
     else
       case passthrough(:mimic, [client, max_length]) do
-      #case :meck.passthrough([client, max_length]) do
         {:ok, body} ->
           body = ExVCR.Filter.filter_sensitive_data(body)
 
