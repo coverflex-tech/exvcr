@@ -1,3 +1,75 @@
+0.14.4
+------
+#### Changes
+* Normalizes request body and URL by parsing params to a list and sorting (#211)
+  - Fix for OTP 26 (map key order is not guaranteed)
+
+0.14.3
+------
+#### Enhancements
+* Allow numeric options for Filter.filter_sensitive_data/1 (#209).
+
+0.14.2
+------
+#### Changes
+* Fix Elixir 1.14 warnings (#207).
+
+0.14.1
+------
+#### Changes
+* Fix compilation in project lacking Finch (#205).
+
+0.14.0
+------
+#### Enhancements
+* Add start_cassette / stop_cassette macro (#199).
+* Support Finch request! function (#197).
+
+0.13.5
+------
+#### Changes
+* Adds httpoison ~> 2.0 support (#196).
+
+0.13.4
+------
+#### Enhancements
+* Add additional information to the InvalidRequestError message (#188).
+
+#### Changes
+* Allow append to be passed to a previously nil setting.
+    - Better document the ignore_urls setting (#187).
+* Resolve Duplicate Docs Warnings (#180).
+
+0.13.3
+------
+#### Changes
+* Update dependency.
+    - Relax dependency constraint on Finch (#182).
+
+0.13.2
+------
+#### Changes
+* Fix for Finch support.
+    - Define Finch adapter conditionally to fix compile error (#178).
+
+0.13.1
+------
+#### Enhancements
+* Add Finch support (#175).
+
+0.13.0
+------
+#### Changes
+* Update meck to fix failing tests (#173).
+
+0.12.3
+------
+#### Enhancements
+* Add support to ignore_urls (#168).
+
+#### Changes
+* Fix sanitize options function in hackney adapter converter (#169).
+
 0.12.2
 ------
 #### Changes

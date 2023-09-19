@@ -23,6 +23,8 @@ The following HTTP libraries can be applied.
     - <a href="https://github.com/tim/erlang-oauth/" target="_blank">erlang-oauth</a>
     - <a href="https://github.com/Zatvobor/tirexs" target="_blank">tirexs</a>
     - support is very limited, and tested only with `:httpc.request/1` and `:httpc.request/4`.
+  - <a href="https://github.com/keathley/finch" target="_blank">Finch</a>
+    - the deprecated `Finch.request/6` functions is not supported
 
 HTTP interactions are recorded as JSON file. The JSON file can be recorded
 automatically (`vcr_cassettes`) or manually updated (`custom_cassettes`).
@@ -99,6 +101,7 @@ defmodule ExVCR.Adapter.HackneyTest do
 
   setup_all do
     HTTPoison.start
+    :ok
   end
 
   test "get request" do
@@ -118,6 +121,7 @@ defmodule ExVCR.Adapter.HttpcTest do
 
   setup_all do
     :inets.start
+    :ok
   end
 
   test "get request" do
@@ -127,6 +131,46 @@ defmodule ExVCR.Adapter.HttpcTest do
       assert to_string(body) =~ ~r/Example Domain/
     end
   end
+end
+```
+
+##### Example with Finch
+
+```Elixir
+defmodule ExVCR.Adapter.FinchTest do
+  use ExUnit.Case, async: true
+  use ExVCR.Mock, adapter: ExVCR.Adapter.Finch
+
+  setup_all do
+    Finch.start_link(name: MyFinch)
+    :ok
+  end
+
+  test "get request" do
+    use_cassette "example_finch_request" do
+      {:ok, response} = Finch.build(:get, "http://example.com/") |> Finch.request(MyFinch)
+      assert response.status == 200
+      assert Map.new(response.headers)["content-type"] == "text/html; charset=UTF-8"
+      assert response.body =~ ~r/Example Domain/
+    end
+  end
+end
+```
+
+#### Example with Start / Stop
+
+Instead of single `use_cassette`, `start_cassette` and `stop_cassette` can serve as an alternative syntax.
+
+```Elixir
+use_cassette("x") do
+  do_something
+end
+```
+
+```Elixir
+start_cassette("x")
+do_something
+stop_cassette
 ```
 
 #### Custom Cassettes
@@ -239,6 +283,22 @@ test "replace sensitive data in request options" do
   refute cassette =~  "\"basic_auth\": {\"username\", \"password\"}"
 
   ExVCR.Config.filter_request_options(nil)
+end
+```
+
+#### Allowed hosts
+
+The `:ignore_urls` can be used to allow requests to be made to certain hosts.
+
+```elixir
+setup do
+  ExVCR.Setting.set(:ignore_urls, [~/example.com/])
+  ExVCR.Setting.append(:ignore_urls, ~/anotherurl.com/)
+end
+
+test "an actual request is made to example.com" do
+  HTTPoison.get!("https://example.com/path?query=true")
+  HTTPoison.get!("https://anotherurl.com/path?query=true")
 end
 ```
 
@@ -635,6 +695,18 @@ test "stub request works for httpc" do
   {:ok, result} = :httpc.request('http://example.com')
   {{_http_version, _status_code = 200, _reason_phrase}, _headers, body} = result
   assert to_string(body) == "success!"
+end
+
+test "stub request works for Finch" do
+  use_cassette :stub, [url: "http://www.example.com",
+                       method: "get",
+                       status_code: 200,
+                       body: "Stub Response"] do
+
+  {:ok, response} = Finch.build(:get, "http://example.com/") |> Finch.request(MyFinch)
+  assert response.body =~ ~r/Stub Response/
+  assert Map.new(response.headers)["content-type"] == "text/html"
+  assert response.status_code == 200
 end
 ```
 

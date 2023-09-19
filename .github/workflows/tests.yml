@@ -1,31 +1,45 @@
 name: tests
 
-on: push
+on: [push, pull_request]
 
 jobs:
   tests:
     name: Run Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        otp: ['20.3']
-        elixir: ['1.5', '1.9']
+        otp: ['21','23']
+        elixir: ['1.10', '1.11']
         global-mock: [true, false]
+        include:
+          - otp: '26'
+            elixir: '1.14'
+            global-mock: true
+          - otp: '26'
+            elixir: '1.14'
+            global-mock: false
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GLOBAL_MOCK: ${{ matrix.global-mock }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-elixir@v1
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
         with:
          otp-version: ${{ matrix.otp }}
          elixir-version: ${{ matrix.elixir }}
-      - uses: actions/cache@v1
+      - uses: actions/cache@v3
         with:
-         path: deps
-         key: ${{ runner.os }}-mix-${{ hashFiles(format('{0}{1}', github.workspace, '/mix.lock')) }}
-         restore-keys: |
-           ${{ runner.os }}-mix-
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
       - run: mix deps.get
-      - run: mix coveralls.github
+      - uses: nick-invision/retry@v2
+        with:
+          timeout_minutes: 3
+          max_attempts: 3
+          shell: bash
+          command: mix coveralls.github

@@ -3,9 +3,8 @@ defmodule ExVCR.Handler do
   Provide operations for request/response.
   """
 
-  alias ExVCR.Recorder
+  alias ExVCR.{Recorder, Setting, Util}
   alias ExVCR.Actor.Options
-  alias ExVCR.Util
 
   @doc """
   Get response from either server or cache.
@@ -36,7 +35,7 @@ defmodule ExVCR.Handler do
     case { response, stub_mode?(recorder_options) } do
       { nil, true } ->
         raise ExVCR.InvalidRequestError,
-          message: "response for [URL:#{params[:url]}, METHOD:#{params[:method]}] was not found"
+          message: "response for [#{invalid_request_details(recorder_options, params)}] was not found"
       { nil, false } ->
         nil
       { response, _ } ->
@@ -44,6 +43,22 @@ defmodule ExVCR.Handler do
         Recorder.set(responses, recorder)
         adapter.get_response_value_from_cache(response)
     end
+  end
+
+  defp invalid_request_details(recorder_options, params) do
+    available_match_types = [:headers, :query, :request_body]
+    match_requests_on = Keyword.get(recorder_options, :match_requests_on, [])
+
+    extra_details =
+      for type <- available_match_types, type in match_requests_on do
+        String.upcase("#{type}") <> ":#{inspect(params[type])}"
+      end
+
+    ([
+       "URL:#{params[:url]}",
+       "METHOD:#{params[:method]}"
+     ] ++ extra_details)
+    |> Enum.join(", ")
   end
 
   defp stub_mode?(options) do
@@ -97,13 +112,13 @@ defmodule ExVCR.Handler do
         pattern = Regex.compile!(Enum.at(match, 1))
         Regex.match?(pattern, key_url)
       else
-        request_url == key_url
+        normalize_url(request_url) == normalize_url(key_url)
       end
     else
       request_url = parse_url(request_url, recorder_options)
       key_url     = parse_url(key_url, recorder_options)
 
-      request_url == key_url
+      normalize_url(request_url) == normalize_url(key_url)
     end
   end
 
@@ -155,11 +170,33 @@ defmodule ExVCR.Handler do
         pattern = Regex.compile!(Enum.at(match, 1))
         Regex.match?(pattern, key_body)
       else
-        request_body == key_body
+        normalize_request_body(request_body) == normalize_request_body(key_body)
       end
     else
       true
     end
+  end
+
+  defp normalize_url(url) do
+    original_url = URI.parse(url)
+    
+    original_url
+    |> Map.put(:query, normalize_query(original_url.query))
+    |> URI.to_string()
+  end
+
+  defp normalize_request_body(request_body) do
+    normalize_query(request_body)
+  end
+  
+  defp normalize_query(nil), do: nil 
+
+  defp normalize_query(query) do
+    query
+    |> URI.decode_query()
+    |> Map.to_list()
+    |> Enum.sort_by(fn {key, _val} -> key end)
+    |> URI.encode_query()
   end
 
   defp get_response_from_server(request, recorder, record?) do
@@ -175,7 +212,14 @@ defmodule ExVCR.Handler do
   end
 
   defp ignore_request?(request, recorder) do
-    ignore_localhost = ExVCR.Recorder.options(recorder)[:ignore_localhost] || ExVCR.Setting.get(:ignore_localhost)
+    ignore_localhost?(request, recorder) ||
+    ignore_urls?(request, recorder)
+  end
+
+  defp ignore_localhost?(request, recorder) do
+    ignore_localhost =
+      Keyword.get(Recorder.options(recorder), :ignore_localhost, Setting.get(:ignore_localhost))
+
     if ignore_localhost do
       adapter = ExVCR.Recorder.options(recorder)[:adapter]
       params = adapter.generate_keys_for_request(request)
@@ -187,8 +231,27 @@ defmodule ExVCR.Handler do
     end
   end
 
+  defp ignore_urls?(request, recorder) do
+    ignore_urls = ExVCR.Recorder.options(recorder)[:ignore_urls] || ExVCR.Setting.get(:ignore_urls)
+
+    if ignore_urls do
+      adapter = ExVCR.Recorder.options(recorder)[:adapter]
+      params = adapter.generate_keys_for_request(request)
+
+      url = to_string(params[:url])
+
+      Enum.any?(ignore_urls, fn r_url ->
+        Regex.match?(r_url, url)
+      end)
+    else
+      false
+    end
+  end
+
   defp ignore_server_fetch!(request, recorder) do
-    strict_mode = ExVCR.Recorder.options(recorder)[:strict_mode] || ExVCR.Setting.get(:strict_mode)
+    strict_mode =
+      Keyword.get(Recorder.options(recorder), :strict_mode, Setting.get(:strict_mode))
+
     if strict_mode do
       message = """
       A matching cassette was not found for this request.

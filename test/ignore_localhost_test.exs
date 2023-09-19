@@ -2,11 +2,14 @@ defmodule ExVCR.IgnoreLocalhostTest do
   use ExVCR.Mock
   use ExUnit.Case, async: false
 
-  @port 34006
+  @port 34012
   @url "http://localhost:#{@port}/server"
 
   setup_all do
     HTTPotion.start
+    on_exit fn ->
+      HttpServer.stop(@port)
+    end
     :ok
   end
 
@@ -45,5 +48,21 @@ defmodule ExVCR.IgnoreLocalhostTest do
       assert HTTPotion.get(non_localhost_url, headers: ["User-Agent": "ExVCR"]).body =~ ~r/test_response_before/
       HttpServer.stop(@port)
     end
+  end
+
+  test "it records localhost requests when overrides the config setting" do
+    ExVCR.Setting.set(:ignore_localhost, true)
+
+    use_cassette "ignore_localhost_unset", ignore_localhost: false do
+      HttpServer.start(path: "/server", port: @port, response: "test_response_before")
+      assert HTTPotion.get(@url, []).body =~ ~r/test_response_before/
+      HttpServer.stop(@port)
+      # this method call should be mocked
+      HttpServer.start(path: "/server", port: @port, response: "test_response_after")
+      assert HTTPotion.get(@url, []).body =~ ~r/test_response_before/
+      HttpServer.stop(@port)
+    end
+
+    ExVCR.Setting.set(:strict_mode, false)
   end
 end
