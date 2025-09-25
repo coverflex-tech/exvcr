@@ -43,7 +43,7 @@ defmodule ExVCR.Mock do
         [do: return_value] = unquote(test)
         return_value
       after
-        module_name = adapter_method().module_name
+        module_name = adapter_method().module_name()
         unload(module_name, mock_lib_method())
         if mock_lib_method() == :meck do
           ExVCR.MockLock.release_lock()
@@ -75,7 +75,7 @@ defmodule ExVCR.Mock do
       after
         recorder_result = Recorder.save(recorder)
 
-        module_name = adapter_method().module_name
+        module_name = adapter_method().module_name()
         unload(module_name, mock_lib_method())
         if mock_lib_method() == :meck do
           ExVCR.MockLock.release_lock()
