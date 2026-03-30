@@ -15,6 +15,8 @@ defmodule ExVCR.Mock do
       :application.start(unquote(adapter).module_name)
       use unquote(adapter)
 
+      @__exvcr_mock_lib unquote(mock_lib)
+
       def adapter_method() do
         unquote(adapter)
       end
@@ -33,6 +35,13 @@ defmodule ExVCR.Mock do
   Provides macro to mock response based on specified parameters.
   """
   defmacro use_cassette(:stub, options, test) do
+    mock_lib = Module.get_attribute(__CALLER__.module, :__exvcr_mock_lib) || :meck
+    maybe_release_lock = if mock_lib == :meck do
+      quote do: ExVCR.MockLock.release_lock()
+    else
+      quote do: :ok
+    end
+
     quote do
       stub_fixture = "stub_fixture_#{ExVCR.Util.uniq_id}"
       stub = prepare_stub_record(unquote(options), adapter_method())
@@ -45,9 +54,7 @@ defmodule ExVCR.Mock do
       after
         module_name = adapter_method().module_name()
         unload(module_name, mock_lib_method())
-        if mock_lib_method() == :meck do
-          ExVCR.MockLock.release_lock()
-        end
+        unquote(maybe_release_lock)
       end
     end
   end
@@ -63,6 +70,13 @@ defmodule ExVCR.Mock do
 
   """
   defmacro use_cassette(fixture, options, test) do
+    mock_lib = Module.get_attribute(__CALLER__.module, :__exvcr_mock_lib) || :meck
+    maybe_release_lock = if mock_lib == :meck do
+      quote do: ExVCR.MockLock.release_lock()
+    else
+      quote do: :ok
+    end
+
     quote do
       recorder = Recorder.start(
         unquote(options) ++ [fixture: normalize_fixture(unquote(fixture)), adapter: adapter_method(), mock_lib: mock_lib_method()])
@@ -77,9 +91,7 @@ defmodule ExVCR.Mock do
 
         module_name = adapter_method().module_name()
         unload(module_name, mock_lib_method())
-        if mock_lib_method() == :meck do
-          ExVCR.MockLock.release_lock()
-        end
+        unquote(maybe_release_lock)
         recorder_result
       end
     end
